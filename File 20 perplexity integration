@@ -1,0 +1,15 @@
+import axios from 'axios';
+
+const PERPLEXITY_API_URL = 'https://api.perplexity.ai/chat/completions';
+
+export async function askPerplexity(query: string, options?: { systemPrompt?: string; context?: any }) {
+  try {
+    const systemContent = options?.systemPrompt || 'You are a market research assistant.';
+    const response = await axios.post(PERPLEXITY_API_URL, {
+      model: 'llama-3.1-sonar-small-128k-online',
+      messages: [{ role: 'system', content: systemContent }, { role: 'user', content: query }],
+      temperature: 0.2, max_tokens: 1000,
+    }, { headers: { Authorization: `Bearer ${process.env.PERPLEXITY_API_KEY}`, 'Content-Type': 'application/json' } });
+    return response.data.choices[0].message.content;
+  } catch { return 'Perplexity service unavailable. Please try again later.'; }
+}
