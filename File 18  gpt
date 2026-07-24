@@ -1,0 +1,15 @@
+import OpenAI from 'openai';
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+
+export async function askChatGPT(prompt: string, options?: { systemPrompt?: string; context?: any }) {
+  try {
+    const messages = [];
+    if (options?.systemPrompt) messages.push({ role: 'system', content: options.systemPrompt });
+    if (options?.context) messages.push({ role: 'user', content: `Context: ${JSON.stringify(options.context)}` });
+    messages.push({ role: 'user', content: prompt });
+
+    const completion = await openai.chat.completions.create({ model: 'gpt-4o', messages });
+    return completion.choices[0].message.content || '';
+  } catch { return 'ChatGPT service unavailable. Please try again later.'; }
+}
