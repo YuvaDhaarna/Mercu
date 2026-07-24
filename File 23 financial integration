@@ -1,0 +1,139 @@
+export interface FinancialData {
+  revenue: number;
+  costOfGoodsSold: number;
+  grossProfit: number;
+  operatingExpenses: number;
+  operatingIncome: number;
+  interestExpense: number;
+  netIncome: number;
+  totalAssets: number;
+  totalLiabilities: number;
+  totalEquity: number;
+  operatingCashFlow: number;
+  investingCashFlow: number;
+  financingCashFlow: number;
+  freeCashFlow: number;
+  employees: number;
+  marketCap?: number;
+  enterpriseValue?: number;
+  parentCompany?: string;
+  subsidiaries?: string[];
+}
+
+export interface FinancialMetrics {
+  grossMargin: number;
+  operatingMargin: number;
+  netMargin: number;
+  EBITDA: number;
+  EBITDA_margin: number;
+  assetTurnover: number;
+  currentRatio: number;
+  debtToEquity: number;
+  debtToAsset: number;
+  interestCoverage: number;
+  peRatio: number;
+  evToEbitda: number;
+  revenueGrowth: number;
+  revenuePerEmployee: number;
+  profitPerEmployee: number;
+}
+
+export class FinancialCalculator {
+  private data: FinancialData;
+  
+  constructor(data: FinancialData) {
+    this.data = data;
+  }
+
+  getGrossMargin(): number {
+    return this.data.revenue > 0 ? (this.data.grossProfit / this.data.revenue) * 100 : 0;
+  }
+
+  getOperatingMargin(): number {
+    return this.data.revenue > 0 ? (this.data.operatingIncome / this.data.revenue) * 100 : 0;
+  }
+
+  getNetMargin(): number {
+    return this.data.revenue > 0 ? (this.data.netIncome / this.data.revenue) * 100 : 0;
+  }
+
+  getEBITDA(): number {
+    return this.data.operatingIncome + this.data.interestExpense;
+  }
+
+  getEBITDAMargin(): number {
+    return this.data.revenue > 0 ? (this.getEBITDA() / this.data.revenue) * 100 : 0;
+  }
+
+  getAssetTurnover(): number {
+    return this.data.totalAssets > 0 ? this.data.revenue / this.data.totalAssets : 0;
+  }
+
+  getCurrentRatio(): number {
+    return this.data.totalLiabilities > 0 ? this.data.totalAssets / this.data.totalLiabilities : 0;
+  }
+
+  getDebtToEquity(): number {
+    return this.data.totalEquity > 0 ? this.data.totalLiabilities / this.data.totalEquity : 0;
+  }
+
+  getDebtToAsset(): number {
+    return this.data.totalAssets > 0 ? this.data.totalLiabilities / this.data.totalAssets : 0;
+  }
+
+  getInterestCoverage(): number {
+    return this.data.interestExpense > 0 ? this.data.operatingIncome / this.data.interestExpense : 0;
+  }
+
+  getRevenuePerEmployee(): number {
+    return this.data.employees > 0 ? this.data.revenue / this.data.employees : 0;
+  }
+
+  getProfitPerEmployee(): number {
+    return this.data.employees > 0 ? this.data.netIncome / this.data.employees : 0;
+  }
+
+  getRevenueGrowth(previousRevenue: number): number {
+    return previousRevenue > 0 ? ((this.data.revenue - previousRevenue) / previousRevenue) * 100 : 0;
+  }
+
+  getAllMetrics(previousRevenue?: number): FinancialMetrics {
+    return {
+      grossMargin: this.getGrossMargin(),
+      operatingMargin: this.getOperatingMargin(),
+      netMargin: this.getNetMargin(),
+      EBITDA: this.getEBITDA(),
+      EBITDA_margin: this.getEBITDAMargin(),
+      assetTurnover: this.getAssetTurnover(),
+      currentRatio: this.getCurrentRatio(),
+      debtToEquity: this.getDebtToEquity(),
+      debtToAsset: this.getDebtToAsset(),
+      interestCoverage: this.getInterestCoverage(),
+      peRatio: this.data.marketCap && this.data.netIncome > 0 ? this.data.marketCap / this.data.netIncome : 0,
+      evToEbitda: this.data.enterpriseValue && this.getEBITDA() > 0 ? this.data.enterpriseValue / this.getEBITDA() : 0,
+      revenueGrowth: previousRevenue ? this.getRevenueGrowth(previousRevenue) : 0,
+      revenuePerEmployee: this.getRevenuePerEmployee(),
+      profitPerEmployee: this.getProfitPerEmployee(),
+    };
+  }
+}
+
+export function calculateAltmanZScore(data: FinancialData): {
+  score: number;
+  risk: 'Safe' | 'Grey' | 'Distress';
+} {
+  const A = data.operatingIncome / data.totalAssets;
+  const B = data.netIncome / data.totalAssets;
+  const C = data.operatingIncome / data.totalAssets;
+  const D = data.totalEquity / data.totalLiabilities;
+  const E = data.revenue / data.totalAssets;
+
+  const score = 1.2 * A + 1.4 * B + 3.3 * C + 0.6 * D + 1.0 * E;
+
+  let risk: 'Safe' | 'Grey' | 'Distress';
+  if (score > 2.99) risk = 'Safe';
+  else if (score > 1.81) risk = 'Grey';
+  else risk = 'Distress';
+
+  return { score, risk };
+}
