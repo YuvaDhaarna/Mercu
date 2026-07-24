@@ -1,0 +1,27 @@
+/** @type {import('tailwindcss').Config} */
+module.exports = {
+  darkMode: 'class',
+  content: ['./src/**/*.{js,ts,jsx,tsx,mdx}'],
+  theme: {
+    extend: {
+      colors: {
+        emerald: { 400: '#34d399', 500: '#10B981', 600: '#059669' },
+        forest: '#065F46',
+      },
+      fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+      boxShadow: { glow: '0 0 30px -5px rgba(16, 185, 129, 0.15)' },
+      borderRadius: { xl: '16px', '2xl': '24px' },
+      animation: {
+        'pulse-glow': 'pulseGlow 3s ease-in-out infinite',
+        'sway': 'sway 4s ease-in-out infinite',
+        'sparkle': 'sparkle 2s ease-in-out infinite',
+      },
+      keyframes: {
+        pulseGlow: { '0%,100%': { opacity: '0.3', transform: 'scale(1)' }, '50%': { opacity: '0.6', transform: 'scale(1.05)' } },
+        sway: { '0%,100%': { transform: 'rotate(-2deg)' }, '50%': { transform: 'rotate(2deg)' } },
+        sparkle: { '0%,100%': { opacity: '0.2', transform: 'scale(0.8)' }, '50%': { opacity: '1', transform: 'scale(1.2)' } },
+      },
+    },
+  },
+  plugins: [],
+}
