@@ -1,0 +1,22 @@
+import { createServer } from '@/lib/supabase/server';
+import { NextRequest, NextResponse } from 'next/server';
+
+export async function POST(req: NextRequest) {
+  const supabase = createServer();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const { data: profile } = await supabase.from('profiles').select('role, company_id').eq('id', user.id).single();
+  if (!profile || profile.role !== 'founder') return NextResponse.json({ error: 'Only Founder can generate invites' }, { status: 403 });
+
+  const { email, role } = await req.json();
+  const token = `invite-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  const { error } = await supabase.from('invite_tokens').insert({
+    token, company_id: profile.company_id, role, email: email || null, created_by: user.id, expires_at: expiresAt
+  });
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ link: `${process.env.NEXT_PUBLIC_APP_URL}/login?token=${token}`, token });
+}
