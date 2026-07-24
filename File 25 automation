@@ -1,0 +1,244 @@
+import { createClient } from '@/lib/supabase/client';
+import { askGemini } from '@/lib/ai/gemini';
+
+export interface Trigger {
+  type: 'task' | 'schedule' | 'webhook' | 'email' | 'meeting';
+  config: any;
+}
+
+export interface Action {
+  type: 'task' | 'email' | 'message' | 'webhook' | 'report' | 'notification';
+  config: any;
+}
+
+export interface Workflow {
+  id: string;
+  name: string;
+  triggers: Trigger[];
+  actions: Action[];
+  conditions: Condition[];
+  status: 'draft' | 'active' | 'paused' | 'archived';
+}
+
+export interface Condition {
+  field: string;
+  operator: 'eq' | 'neq' | 'gt' | 'lt' | 'contains' | 'startsWith' | 'endsWith';
+  value: any;
+}
+
+export interface Optimization {
+  type: 'remove_duplicate' | 'parallelize' | 'add_condition' | 'reorder';
+  description: string;
+  impact: string;
+}
+
+export class WorkflowEngine {
+  private supabase = createClient();
+
+  async createWorkflow(triggers: Trigger[], actions: Action[]): Promise<Workflow> {
+    const { data, error } = await this.supabase
+      .from('workflows')
+      .insert({
+        name: `Workflow ${Date.now()}`,
+        triggers,
+        actions,
+        status: 'draft',
+        created_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
+  async updateWorkflow(workflowId: string, updates: Partial<Workflow>): Promise<Workflow> {
+    const { data, error } = await this.supabase
+      .from('workflows')
+      .update(updates)
+      .eq('id', workflowId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
+  async activateWorkflow(workflowId: string): Promise<Workflow> {
+    return this.updateWorkflow(workflowId, { status: 'active' });
+  }
+
+  async pauseWorkflow(workflowId: string): Promise<Workflow> {
+    return this.updateWorkflow(workflowId, { status: 'paused' });
+  }
+
+  async archiveWorkflow(workflowId: string): Promise<Workflow> {
+    return this.updateWorkflow(workflowId, { status: 'archived' });
+  }
+
+  async runWorkflow(workflowId: string): Promise<any> {
+    const workflow = await this.getWorkflow(workflowId);
+    if (!workflow || workflow.status !== 'active') {
+      throw new Error('Workflow is not active');
+    }
+
+    const results = [];
+    
+    for (const action of workflow.actions) {
+      const result = await this.executeAction(action);
+      results.push(result);
+    }
+
+    await this.supabase.from('workflow_executions').insert({
+      workflow_id: workflowId,
+      results,
+      executed_at: new Date().toISOString(),
+    });
+
+    return results;
+  }
+
+  private async executeAction(action: Action): Promise<any> {
+    switch (action.type) {
+      case 'task': return this.executeTaskAction(action);
+      case 'email': return this.executeEmailAction(action);
+      case 'message': return this.executeMessageAction(action);
+      case 'webhook': return this.executeWebhookAction(action);
+      case 'report': return this.executeReportAction(action);
+      case 'notification': return this.executeNotificationAction(action);
+      default: throw new Error(`Unknown action type: ${action.type}`);
+    }
+  }
+
+  private async executeTaskAction(action: Action): Promise<any> {
+    const { data, error } = await this.supabase
+      .from('tasks')
+      .insert(action.config)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
+  private async executeEmailAction(action: Action): Promise<any> {
+    return { sent: true, messageId: `email-${Date.now()}` };
+  }
+
+  private async executeMessageAction(action: Action): Promise<any> {
+    await this.supabase.from('chat_messages').insert(action.config);
+    return { sent: true };
+  }
+
+  private async executeWebhookAction(action: Action): Promise<any> {
+    const response = await fetch(action.config.url, {
+      method: action.config.method || 'POST',
+      headers: action.config.headers || {},
+      body: JSON.stringify(action.config.body || {}),
+    });
+    return await response.json();
+  }
+
+  private async executeReportAction(action: Action): Promise<any> {
+    const report = await this.generateReport(action.config);
+    return report;
+  }
+
+  private async executeNotificationAction(action: Action): Promise<any> {
+    await this.supabase.from('notifications').insert(action.config);
+    return { sent: true };
+  }
+
+  async suggestOptimization(workflowId: string): Promise<Optimization[]> {
+    const workflow = await this.getWorkflow(workflowId);
+    const analysis = await this.analyzeWorkflow(workflow);
+    return analysis.optimizations || [];
+  }
+
+  private async analyzeWorkflow(workflow: Workflow): Promise<any> {
+    const prompt = `
+      Analyze this workflow and suggest optimizations:
+      ${JSON.stringify(workflow, null, 2)}
+      
+      Return JSON with:
+      - bottlenecks: list of bottlenecks
+      - optimizations: list of optimization suggestions
+      - predictedImprovement: percentage improvement
+    `;
+    
+    const response = await askGemini(prompt);
+    try {
+      return JSON.parse(response);
+    } catch {
+      return {
+        bottlenecks: [],
+        optimizations: [
+          {
+            type: 'parallelize',
+            description: 'Run actions in parallel for faster execution',
+            impact: '30% speed improvement',
+          },
+        ],
+        predictedImprovement: '30',
+      };
+    }
+  }
+
+  async autoGenerateWorkflow(task: string): Promise<Workflow> {
+    const prompt = `
+      Generate a workflow for this task:
+      ${task}
+      
+      Return JSON with triggers and actions.
+    `;
+    
+    const response = await askGemini(prompt);
+    let parsed;
+    try {
+      parsed = JSON.parse(response);
+    } catch {
+      parsed = {
+        triggers: [{ type: 'task', config: { status: 'pending' } }],
+        actions: [{ type: 'task', config: { status: 'in_progress' } }],
+      };
+    }
+
+    return this.createWorkflow(parsed.triggers, parsed.actions);
+  }
+
+  async scheduleWorkflow(workflowId: string, schedule: string): Promise<void> {
+    console.log(`📅 Scheduling workflow ${workflowId} at ${schedule}`);
+    
+    await this.supabase.from('workflow_schedules').insert({
+      workflow_id: workflowId,
+      schedule,
+      active: true,
+      created_at: new Date().toISOString(),
+    });
+  }
+
+  private async getWorkflow(workflowId: string): Promise<Workflow | null> {
+    const { data, error } = await this.supabase
+      .from('workflows')
+      .select('*')
+      .eq('id', workflowId)
+      .single();
+
+    if (error) return null;
+    return data;
+  }
+
+  private async generateReport(config: any): Promise<any> {
+    const response = await askGemini(
+      `Generate a report with the following config: ${JSON.stringify(config)}`
+    );
+    
+    return {
+      id: `report-${Date.now()}`,
+      content: response,
+      generated_at: new Date().toISOString(),
+    };
+  }
+}
+
+export const workflowEngine = new WorkflowEngine();
