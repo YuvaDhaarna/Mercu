@@ -1,0 +1,265 @@
+import { createClient } from '@/lib/supabase/client';
+
+export interface HealthData {
+  steps: number;
+  calories_burned: number;
+  active_minutes: number;
+  sleep_hours: number;
+  heart_rate_avg: number;
+  stress_level: number;
+  mood_score: number;
+  energy_level: number;
+  focus_score: number;
+  screen_time_minutes: number;
+  deep_work_minutes: number;
+  break_taken: number;
+  notes?: string;
+}
+
+export interface WellnessGoal {
+  id: string;
+  goal_type: 'steps' | 'sleep' | 'screen_time' | 'focus' | 'stress' | 'mood' | 'active_minutes';
+  target_value: number;
+  current_value: number;
+  period: 'daily' | 'weekly' | 'monthly';
+  status: 'active' | 'completed' | 'archived';
+}
+
+export class WellnessManager {
+  private supabase = createClient();
+
+  async logHealthMetrics(userId: string, data: HealthData) {
+    const { data: result, error } = await this.supabase
+      .from('health_metrics')
+      .upsert({
+        user_id: userId,
+        recorded_date: new Date().toISOString().split('T')[0],
+        ...data,
+        updated_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+    return result;
+  }
+
+  async getTodayMetrics(userId: string) {
+    const today = new Date().toISOString().split('T')[0];
+    const { data, error } = await this.supabase
+      .from('health_metrics')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('recorded_date', today)
+      .maybeSingle();
+
+    if (error) throw error;
+    return data;
+  }
+
+  async getWeeklyMetrics(userId: string) {
+    const weekAgo = new Date();
+    weekAgo.setDate(weekAgo.getDate() - 7);
+
+    const { data, error } = await this.supabase
+      .from('health_metrics')
+      .select('*')
+      .eq('user_id', userId)
+      .gte('recorded_date', weekAgo.toISOString().split('T')[0])
+      .order('recorded_date', { ascending: true });
+
+    if (error) throw error;
+    return data;
+  }
+
+  async setGoal(userId: string, goal: Omit<WellnessGoal, 'id' | 'current_value' | 'status'>) {
+    const { data, error } = await this.supabase
+      .from('wellness_goals')
+      .insert({
+        user_id: userId,
+        ...goal,
+        current_value: 0,
+        status: 'active',
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
+  async getActiveGoals(userId: string) {
+    const { data, error } = await this.supabase
+      .from('wellness_goals')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('status', 'active');
+
+    if (error) throw error;
+    return data;
+  }
+
+  async startBreak(userId: string, breakType: string, notes?: string) {
+    const { data, error } = await this.supabase
+      .from('work_breaks')
+      .insert({
+        user_id: userId,
+        break_type: breakType,
+        started_at: new Date().toISOString(),
+        notes,
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
+  async endBreak(breakId: string) {
+    const endedAt = new Date().toISOString();
+    const { data: breakData } = await this.supabase
+      .from('work_breaks')
+      .select('started_at')
+      .eq('id', breakId)
+      .single();
+
+    if (!breakData) throw new Error('Break not found');
+
+    const duration = (new Date(endedAt).getTime() - new Date(breakData.started_at).getTime()) / 60000;
+
+    const { data, error } = await this.supabase
+      .from('work_breaks')
+      .update({
+        ended_at: endedAt,
+        duration_minutes: Math.round(duration),
+      })
+      .eq('id', breakId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
+  async startProductivitySession(userId: string, taskId?: string) {
+    const { data, error } = await this.supabase
+      .from('productivity_sessions')
+      .insert({
+        user_id: userId,
+        task_id: taskId || null,
+        started_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
+  async endProductivitySession(sessionId: string, focusRating: number, interruptions: number) {
+    const endedAt = new Date().toISOString();
+    const { data: sessionData } = await this.supabase
+      .from('productivity_sessions')
+      .select('started_at')
+      .eq('id', sessionId)
+      .single();
+
+    if (!sessionData) throw new Error('Session not found');
+
+    const duration = (new Date(endedAt).getTime() - new Date(sessionData.started_at).getTime()) / 60000;
+
+    const { data, error } = await this.supabase
+      .from('productivity_sessions')
+      .update({
+        ended_at: endedAt,
+        duration_minutes: Math.round(duration),
+        focus_rating: focusRating,
+        interruptions: interruptions,
+      })
+      .eq('id', sessionId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
+  async getWellnessScore(userId: string) {
+    const metrics = await this.getTodayMetrics(userId);
+    if (!metrics) return { score: 0, recommendations: [] };
+
+    let score = 0;
+    const recommendations: string[] = [];
+
+    if (metrics.steps >= 10000) score += 10;
+    else if (metrics.steps >= 7000) score += 7;
+    else if (metrics.steps >= 5000) score += 4;
+    else recommendations.push('🚶 Take a 15-minute walk to reach 10,000 steps');
+
+    if (metrics.active_minutes >= 30) score += 10;
+    else if (metrics.active_minutes >= 20) score += 7;
+    else if (metrics.active_minutes >= 10) score += 4;
+    else recommendations.push('🏃 Schedule 30 minutes of active time today');
+
+    if (metrics.sleep_hours >= 7) score += 10;
+    else if (metrics.sleep_hours >= 6) score += 7;
+    else if (metrics.sleep_hours >= 5) score += 4;
+    else recommendations.push('😴 Aim for 7-8 hours of sleep tonight');
+
+    if (metrics.stress_level <= 3) score += 10;
+    else if (metrics.stress_level <= 5) score += 7;
+    else if (metrics.stress_level <= 7) score += 4;
+    else recommendations.push('🧘 Take a 5-minute meditation break to reduce stress');
+
+    if (metrics.mood_score >= 7) score += 10;
+    else if (metrics.mood_score >= 5) score += 7;
+    else if (metrics.mood_score >= 3) score += 4;
+    else recommendations.push('💭 Connect with a colleague for a positive conversation');
+
+    if (metrics.focus_score >= 7) score += 10;
+    else if (metrics.focus_score >= 5) score += 7;
+    else if (metrics.focus_score >= 3) score += 4;
+    else recommendations.push('🎯 Try a 25-minute Pomodoro session to boost focus');
+
+    if (metrics.screen_time_minutes < 120) score += 20;
+    else if (metrics.screen_time_minutes < 180) score += 15;
+    else if (metrics.screen_time_minutes < 240) score += 10;
+    else recommendations.push('📱 Take regular screen breaks — try the 20-20-20 rule');
+
+    if (metrics.break_taken >= 3) score += 10;
+    else if (metrics.break_taken >= 2) score += 7;
+    else if (metrics.break_taken >= 1) score += 4;
+    else recommendations.push('☕ Take a 5-minute break every hour');
+
+    if (metrics.deep_work_minutes >= 120) score += 10;
+    else if (metrics.deep_work_minutes >= 60) score += 7;
+    else if (metrics.deep_work_minutes >= 30) score += 4;
+    else recommendations.push('⚡ Block 2 hours for deep, focused work today');
+
+    return {
+      score: Math.min(100, score),
+      recommendations: recommendations.slice(0, 5),
+      metrics,
+    };
+  }
+
+  async getTeamWellness(managerId: string) {
+    const { data: team } = await this.supabase
+      .from('profiles')
+      .select('id, full_name')
+      .eq('department_id', (await this.supabase.from('profiles').select('department_id').eq('id', managerId).single()).data?.department_id);
+
+    if (!team) return [];
+
+    const teamWellness = await Promise.all(
+      team.map(async (member) => {
+        const wellness = await this.getWellnessScore(member.id);
+        return { ...member, wellness };
+      })
+    );
+
+    return teamWellness;
+  }
+}
+
+export const wellnessManager = new WellnessManager();
