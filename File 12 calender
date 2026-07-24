@@ -1,0 +1,41 @@
+import { createServer } from '@/lib/supabase/server';
+import { getGoogleService } from '@/lib/google/googleApi';
+import { NextRequest, NextResponse } from 'next/server';
+
+export async function GET(req: NextRequest) {
+  try {
+    const supabase = createServer();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { data: tokens } = await supabase
+      .from('google_tokens')
+      .select('access_token')
+      .eq('user_id', user.id)
+      .single();
+
+    if (!tokens) {
+      return NextResponse.json(
+        { error: 'Google not connected' },
+        { status: 400 }
+      );
+    }
+
+    const service = getGoogleService(user.id);
+    const timeMin = req.nextUrl.searchParams.get('timeMin') || new Date().toISOString();
+    const timeMax = req.nextUrl.searchParams.get('timeMax') || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+    const events = await service.listEvents(timeMin, timeMax);
+
+    return NextResponse.json({ events });
+
+  } catch (error: any) {
+    console.error('Calendar API error:', error);
+    return NextResponse.json(
+      { error: error.message || 'Failed to fetch calendar events' },
+      { status: 500 }
+    );
+  }
+}
