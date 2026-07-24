@@ -1,0 +1,49 @@
+# ============================================
+# SUPABASE
+# ============================================
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
+
+# ============================================
+# GOOGLE WORKSPACE
+# ============================================
+GOOGLE_CLIENT_ID=your_google_client_id
+GOOGLE_CLIENT_SECRET=your_google_client_secret
+GOOGLE_REDIRECT_URI=https://your-app.netlify.app/api/google/callback
+GOOGLE_SCOPES=https://www.googleapis.com/auth/gmail.readonly,https://www.googleapis.com/auth/calendar.readonly,https://www.googleapis.com/auth/drive.readonly,https://www.googleapis.com/auth/documents.readonly,https://www.googleapis.com/auth/spreadsheets.readonly,https://www.googleapis.com/auth/presentations.readonly,https://www.googleapis.com/auth/sites.readonly,https://www.googleapis.com/auth/meet,https://www.googleapis.com/auth/keep.readonly
+
+# ============================================
+# ZOOM
+# ============================================
+ZOOM_CLIENT_ID=your_zoom_client_id
+ZOOM_CLIENT_SECRET=your_zoom_client_secret
+ZOOM_REDIRECT_URI=https://your-app.netlify.app/api/zoom/callback
+
+# ============================================
+# CANVA
+# ============================================
+CANVA_CLIENT_ID=your_canva_client_id
+CANVA_CLIENT_SECRET=your_canva_client_secret
+CANVA_REDIRECT_URI=https://your-app.netlify.app/api/canva/callback
+
+# ============================================
+# SLACK
+# ============================================
+SLACK_CLIENT_ID=your_slack_client_id
+SLACK_CLIENT_SECRET=your_slack_client_secret
+SLACK_REDIRECT_URI=https://your-app.netlify.app/api/slack/callback
+
+# ============================================
+# AI PROVIDERS
+# ============================================
+OPENAI_API_KEY=your_openai_key
+GEMINI_API_KEY=your_gemini_key
+PERPLEXITY_API_KEY=your_perplexity_key
+CLAUDE_API_KEY=your_claude_api_key
+DEEPSEEK_API_KEY=your_deepseek_api_key
+
+# ============================================
+# APP
+# ============================================
+NEXT_PUBLIC_APP_URL=https://your-app.netlify.app
+NEXT_PUBLIC_ENVIRONMENT=production
