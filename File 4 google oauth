@@ -1,0 +1,63 @@
+import { createServer } from '@/lib/supabase/server';
+import { NextRequest, NextResponse } from 'next/server';
+
+export async function GET(req: NextRequest) {
+  const requestUrl = new URL(req.url);
+  const code = requestUrl.searchParams.get('code');
+  const token = requestUrl.searchParams.get('token');
+
+  if (!code) return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}/login?error=no_code`);
+
+  try {
+    const supabase = createServer();
+    const { data: { session }, error: sessionError } = await supabase.auth.exchangeCodeForSession(code);
+    if (sessionError || !session?.user) return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}/login?error=auth_failed`);
+
+    const userId = session.user.id;
+    const userEmail = session.user.email;
+
+    if (token) {
+      const { data: inviteData, error: inviteError } = await supabase
+        .from('invite_tokens')
+        .select('*')
+        .eq('token', token)
+        .is('used_at', null)
+        .gt('expires_at', new Date().toISOString())
+        .maybeSingle();
+
+      if (inviteError || !inviteData) {
+        await supabase.auth.signOut();
+        return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}/login?error=invalid_token`);
+      }
+
+      const { data: existingProfile } = await supabase.from('profiles').select('id').eq('id', userId).maybeSingle();
+
+      if (!existingProfile) {
+        const employeeId = `EMP-${String(Math.floor(Math.random() * 1000000)).padStart(6, '0')}`;
+        await supabase.from('profiles').insert({
+          id: userId,
+          full_name: session.user.user_metadata?.full_name || session.user.user_metadata?.name || userEmail?.split('@')[0],
+          avatar_url: session.user.user_metadata?.avatar_url || session.user.user_metadata?.picture || null,
+          role: inviteData.role,
+          company_id: inviteData.company_id,
+          employee_id: employeeId,
+        });
+      }
+
+      await supabase.from('invite_tokens').update({ used_at: new Date().toISOString() }).eq('token', token);
+
+      let redirectPath = '/dashboard/employee';
+      if (inviteData.role === 'founder') redirectPath = '/dashboard/founder';
+      else if (['ceo','president','cfo','chairman'].includes(inviteData.role)) redirectPath = '/dashboard/executive';
+      else if (['manager','hr'].includes(inviteData.role)) redirectPath = '/dashboard/manager';
+
+      return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}${redirectPath}?welcome=true`);
+    }
+
+    return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}/dashboard/employee`);
+
+  } catch (error) {
+    console.error('Auth callback error:', error);
+    return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}/login?error=callback_failed`);
+  }
+}
