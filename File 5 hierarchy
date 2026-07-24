@@ -1,0 +1,55 @@
+export const ROLES = {
+  FOUNDER: ['founder'],
+  C_SUITE: ['ceo','cfo','coo','cto','cmo','chro','cio'],
+  EXECUTIVE: ['chairman','vice_chairman','president','vice_president','managing_director'],
+  HR: ['hr'],
+  MANAGER: ['manager','team_leader','supervisor'],
+  EMPLOYEE: ['employee','intern'],
+  GUEST: ['guest'],
+} as const;
+
+export type Role = 'founder'|'ceo'|'cfo'|'coo'|'cto'|'cmo'|'chro'|'cio'|'chairman'|'vice_chairman'|'president'|'vice_president'|'managing_director'|'hr'|'manager'|'team_leader'|'supervisor'|'employee'|'intern'|'guest';
+export const ALL_ROLES: Role[] = ['founder','ceo','cfo','coo','cto','cmo','chro','cio','chairman','vice_chairman','president','vice_president','managing_director','hr','manager','team_leader','supervisor','employee','intern','guest'];
+
+export const TIER_MAP: Record<Role, 'FOUNDER'|'KEY'|'DELTA'|'ALPHA'> = {
+  founder:'FOUNDER', ceo:'KEY', cfo:'KEY', coo:'KEY', cto:'KEY', cmo:'KEY', chro:'KEY', cio:'KEY',
+  chairman:'KEY', vice_chairman:'KEY', president:'KEY', vice_president:'KEY', managing_director:'KEY',
+  hr:'DELTA', manager:'DELTA', team_leader:'DELTA', supervisor:'DELTA',
+  employee:'ALPHA', intern:'ALPHA', guest:'ALPHA'
+};
+
+export function getTier(r: Role): string { return TIER_MAP[r] || 'ALPHA'; }
+export const isFounder = (r: Role) => r === 'founder';
+export const isCEO = (r: Role) => r === 'ceo';
+export const isCFO = (r: Role) => r === 'cfo';
+export const isHR = (r: Role) => r === 'hr';
+export const isExecutive = (r: Role) => ROLES.C_SUITE.includes(r as any) || ROLES.EXECUTIVE.includes(r as any);
+export const isManager = (r: Role) => ROLES.MANAGER.includes(r as any) || r === 'hr';
+
+export const MODULE_ACCESS: Record<string, Role[]> = {
+  'founder-room': ['founder'], 'data-center': ['founder'], 'audit-logs': ['founder'], 'invite-generate': ['founder'],
+  'company-analytics': ['founder','ceo','cfo','coo','cto','cmo','chro','cio','chairman','vice_chairman','president','vice_president','managing_director'],
+  'finance-overview': ['founder','cfo','ceo','president','chairman'],
+  'strategy-room': ['founder','ceo','president','chairman'],
+  'people-management': ['founder','hr','manager','team_leader','supervisor','ceo','president','chairman'],
+  'my-tasks': ALL_ROLES, 'my-calendar': ALL_ROLES, 'company-feed': ALL_ROLES, 'chat': ALL_ROLES,
+  'notifications': ALL_ROLES, 'search': ALL_ROLES, 'connect': ALL_ROLES, 'office': ALL_ROLES, 'learning': ALL_ROLES,
+  'wellness': ALL_ROLES, 'employee-management': ['founder','ceo','cfo','coo','cto','cmo','chro','cio','chairman','president','hr','manager'],
+  'analytics': ['founder','ceo','cfo','coo','cto','cmo','chro','cio','chairman','president','vice_president','managing_director','hr','manager'],
+  'automation': ['founder','ceo','cfo','coo','cto','managing_director'],
+};
+
+export function canAccess(r: Role, mid: string): boolean { const a = MODULE_ACCESS[mid]; return a ? a.includes(r) : false; }
+export function canInvite(r: Role, t: Role): boolean {
+  if (r === 'founder') return true;
+  if (r === 'hr' && ['employee','intern'].includes(t)) return true;
+  if (isExecutive(r) && ['manager','hr','employee','intern'].includes(t)) return true;
+  if (isManager(r) && ['employee','intern'].includes(t)) return true;
+  return false;
+}
+export function getDefaultRoute(r: Role): string {
+  if (r === 'founder') return '/dashboard/founder';
+  if (isExecutive(r)) return '/dashboard/executive';
+  if (r === 'hr' || isManager(r)) return '/dashboard/manager';
+  return '/dashboard/employee';
+}
