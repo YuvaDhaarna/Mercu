@@ -1,0 +1,47 @@
+'use client';
+import { createClient } from '@/lib/supabase/client';
+import { User } from '@supabase/supabase-js';
+import { useRouter } from 'next/navigation';
+import React, { createContext, useContext, useEffect, useState } from 'react';
+
+export interface Profile { id: string; full_name: string; avatar_url: string; profile_picture: string; role: string; company_id: string | null; department_id: string | null; employee_id: string; job_title: string; phone: string; location: string; bio: string; skills: string[]; social_links: any; is_banned: boolean; is_active: boolean; last_login: string; }
+
+interface AuthContextType { user: User | null; profile: Profile | null; isLoading: boolean; signOut: () => Promise<void>; refreshProfile: () => Promise<void>; }
+
+const AuthContext = createContext<AuthContextType>({ user: null, profile: null, isLoading: true, signOut: async () => {}, refreshProfile: async () => {} });
+export const useAuth = () => useContext(AuthContext);
+
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [user, setUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const supabase = createClient();
+  const router = useRouter();
+
+  const fetchProfile = async (userId: string) => { const { data: profile } = await supabase.from('profiles').select('*').eq('id', userId).single(); return profile; };
+
+  useEffect(() => {
+    const getUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setUser(user);
+      if (user) { const profile = await fetchProfile(user.id); setProfile(profile); }
+      setIsLoading(false);
+    };
+    getUser();
+    const { data: listener } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      setUser(session?.user ?? null);
+      if (session?.user) { const profile = await fetchProfile(session.user.id); setProfile(profile); } else { setProfile(null); }
+      setIsLoading(false);
+    });
+    return () => listener?.subscription.unsubscribe();
+  }, [supabase]);
+
+  const signOut = async () => { await supabase.auth.signOut(); router.push('/login'); };
+  const refreshProfile = async () => { if (user) { const profile = await fetchProfile(user.id); setProfile(profile); } };
+
+  return (
+    <AuthContext.Provider value={{ user, profile, isLoading, signOut, refreshProfile }}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
