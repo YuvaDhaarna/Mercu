@@ -1,0 +1,123 @@
+'use client';
+import { createClient } from '@/lib/supabase/client';
+import { Card } from '@/components/shared/Card';
+import { Button } from '@/components/shared/Button';
+import { Input } from '@/components/shared/Input';
+import { Logo } from '@/components/Logo';
+import { Mail, Lock, Chrome, Link as LinkIcon } from 'lucide-react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useState, useEffect, Suspense } from 'react';
+import { motion } from 'framer-motion';
+
+function LoginContent() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [inviteToken, setInviteToken] = useState<string | null>(null);
+  const [tokenStatus, setTokenStatus] = useState<'valid'|'invalid'|'checking'>('checking');
+  const [manualToken, setManualToken] = useState('');
+  const supabase = createClient();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    const token = searchParams.get('token');
+    if (token) { setInviteToken(token); validateToken(token); } else { setTokenStatus('invalid'); }
+  }, [searchParams]);
+
+  const validateToken = async (token: string) => {
+    setTokenStatus('checking');
+    try {
+      const res = await fetch(`/api/invites/validate?token=${token}`);
+      const data = await res.json();
+      if (data.valid) { setTokenStatus('valid'); setEmail(data.email || ''); } else { setTokenStatus('invalid'); setError(data.error || 'Invalid or expired invite link.'); }
+    } catch { setTokenStatus('invalid'); setError('Failed to validate invite link.'); }
+  };
+
+  const handleManualToken = () => { if (manualToken.trim()) { setInviteToken(manualToken.trim()); validateToken(manualToken.trim()); } };
+
+  const handleEmailLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (tokenStatus !== 'valid') { setError('You need a valid invite token to log in.'); return; }
+    setLoading(true); setError('');
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) setError(error.message);
+    else {
+      if (inviteToken) await supabase.from('invite_tokens').update({ used_at: new Date().toISOString() }).eq('token', inviteToken);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
+        if (profile?.role === 'founder') router.push('/dashboard/founder');
+        else if (['ceo','president','vice_president','cfo','chairman','vice_chairman','managing_director'].includes(profile?.role || '')) router.push('/dashboard/executive');
+        else if (['manager','team_leader','supervisor','hr'].includes(profile?.role || '')) router.push('/dashboard/manager');
+        else router.push('/dashboard/employee');
+      }
+    }
+    setLoading(false);
+  };
+
+  const handleGoogleLogin = async () => {
+    if (tokenStatus !== 'valid') { setError('You need a valid invite token to log in.'); return; }
+    setLoading(true);
+    const redirectTo = `${window.location.origin}/auth/callback?token=${inviteToken}`;
+    const { error } = await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo } });
+    if (error) setError(error.message);
+    setLoading(false);
+  };
+
+  if (tokenStatus === 'invalid' && !inviteToken) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4 bg-[#0B0B0B]">
+        <Card className="p-8 max-w-md text-center border-white/10">
+          <LinkIcon className="h-12 w-12 text-emerald-400 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-white">Enter Your Office</h2>
+          <p className="text-gray-400 text-sm mt-2">You need an invite link from your Founder to enter.</p>
+          <div className="mt-6 flex gap-2">
+            <Input placeholder="Paste invite token..." value={manualToken} onChange={(e) => setManualToken(e.target.value)} />
+            <Button onClick={handleManualToken} className="bg-emerald-500 hover:bg-emerald-600 text-black">Enter</Button>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  if (tokenStatus === 'invalid' && inviteToken) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4 bg-[#0B0B0B]">
+        <Card className="p-8 max-w-md text-center border-red-500/20 bg-red-500/5">
+          <h2 className="text-xl font-bold text-red-400">Invalid Invite Link</h2>
+          <p className="text-gray-400 mt-2">{error}</p>
+          <Button variant="outline" className="mt-4" onClick={() => router.push('/login')}>Try Again</Button>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen flex items-center justify-center p-4 bg-[#0B0B0B]">
+      <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="w-full max-w-md">
+        <Card className="p-8 border-emerald-500/30 bg-white/[0.03]">
+          <div className="text-center mb-6"><Logo size="lg" className="justify-center" /><p className="text-gray-400 text-sm mt-2">Your Intelligent Digital Office</p><p className="text-emerald-400 text-xs font-medium mt-1">✓ Valid Invite Token</p></div>
+          <form onSubmit={handleEmailLogin} className="space-y-4">
+            <div><label className="text-sm text-gray-400 block mb-1.5">Email</label><div className="relative"><Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" /><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="pl-10" required /></div></div>
+            <div><label className="text-sm text-gray-400 block mb-1.5">Password</label><div className="relative"><Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" /><Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="pl-10" required /></div></div>
+            {error && <p className="text-red-400 text-sm">{error}</p>}
+            <Button type="submit" disabled={loading} className="w-full bg-emerald-500 hover:bg-emerald-600 text-black h-12">{loading ? 'Loading...' : 'Enter Office'}</Button>
+          </form>
+          <div className="relative my-6"><div className="absolute inset-0 flex items-center"><div className="w-full border-t border-white/10" /></div><div className="relative flex justify-center text-xs"><span className="bg-[#0B0B0B] px-2 text-gray-500">OR</span></div></div>
+          <Button onClick={handleGoogleLogin} disabled={loading} variant="outline" className="w-full h-12 border-white/10"><Chrome className="h-5 w-5 mr-3 text-emerald-400" /> Continue with Google</Button>
+          <p className="text-[10px] text-gray-600 text-center mt-4">🔒 Role-based access · RLS enforced</p>
+        </Card>
+      </motion.div>
+    </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#0B0B0B] flex items-center justify-center text-white">Loading...</div>}>
+      <LoginContent />
+    </Suspense>
+  );
+}
